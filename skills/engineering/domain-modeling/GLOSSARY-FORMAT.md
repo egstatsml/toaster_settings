@@ -9,24 +9,24 @@
 
 ## Language
 
-**Order**:
+**Episode**:
 {A one or two sentence description of the term}
-_Avoid_: Purchase, transaction
+_Avoid_: Trajectory, rollout
 
-**Invoice**:
-A request for payment sent to a customer after delivery.
-_Avoid_: Bill, payment request
+**Probe**:
+A small classifier trained on frozen representations to measure what they encode.
+_Avoid_: Head, readout
 
-**Customer**:
-A person or organization that places orders.
-_Avoid_: Client, buyer, account
+**Held-out split**:
+Examples never seen during training or model selection, used once for the final number.
+_Avoid_: Test set (when it is ambiguous with the validation split), eval set
 ```
 
 ## Rules
 
 - **Be opinionated.** When multiple words exist for the same concept, pick the best one and list the others under `_Avoid_`.
 - **Keep definitions tight.** One or two sentences max. Define what it IS, not what it does.
-- **Only include terms specific to this project's context.** General programming concepts (timeouts, error types, utility patterns) don't belong even if the project uses them extensively. Before adding a term, ask: is this a concept unique to this context, or a general programming concept? Only the former belongs.
+- **Only include terms specific to this project's context.** General programming and ML concepts (timeouts, error types, learning rate, batch size) don't belong even if the project uses them extensively. Before adding a term, ask: is this a concept unique to this context, or a general programming concept? Only the former belongs.
 - **Group terms under subheadings** when natural clusters emerge. If all terms belong to a single cohesive area, a flat list is fine.
 
 ## Single vs multi-context repos
@@ -40,15 +40,15 @@ _Avoid_: Client, buyer, account
 
 ## Contexts
 
-- [Ordering](./src/ordering/GLOSSARY.md): receives and tracks customer orders
-- [Billing](./src/billing/GLOSSARY.md): generates invoices and processes payments
-- [Fulfillment](./src/fulfillment/GLOSSARY.md): manages warehouse picking and shipping
+- [Data](./src/data/GLOSSARY.md): builds datasets, splits, and batches from raw sources
+- [Modelling](./src/models/GLOSSARY.md): model architectures and objectives
+- [Evaluation](./src/evaluation/GLOSSARY.md): metrics, benchmarks, and result reporting
 
 ## Relationships
 
-- **Ordering → Fulfillment**: Ordering emits `OrderPlaced` events; Fulfillment consumes them to start picking
-- **Fulfillment → Billing**: Fulfillment emits `ShipmentDispatched` events; Billing consumes them to generate invoices
-- **Ordering ↔ Billing**: Shared types for `CustomerId` and `Money`
+- **Data → Modelling**: Data yields batches in the shape contract Modelling consumes
+- **Modelling → Evaluation**: Evaluation loads checkpoints produced by Modelling and scores them on held-out splits
+- **Data ↔ Evaluation**: Shared split definitions, so evaluation never sees training examples
 ```
 
 The skill infers which structure applies:

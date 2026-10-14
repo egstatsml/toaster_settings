@@ -1,99 +1,60 @@
 ## What it does
 
-`to-tickets` takes a plan, a [spec](https://www.aihero.dev/ai-coding-dictionary/spec), or the conversation you are in, and breaks it into a set of **[tickets](https://www.aihero.dev/ai-coding-dictionary/ticket)** on your issue tracker. Each ticket declares its **blocking edges**: the other tickets that have to finish before it can start.
+`to-tickets` breaks a spec, a plan, or the conversation you are in into a set of **tickets**, one markdown file each under `plans/<slug>/tickets/`. Each ticket declares its **blocking edges**: the tickets that must finish before it can start.
 
-Every ticket is a **tracer bullet**: a narrow but complete path through every layer of the change (schema, API, UI, tests) that you can demo on its own as soon as it lands. This is what makes the skill different from the obvious way to split work, which is to cut one layer at a time and integrate at the end. It also sizes each ticket to fit in a single fresh [context window](https://www.aihero.dev/ai-coding-dictionary/context-window), because a [session](https://www.aihero.dev/ai-coding-dictionary/session) that has never seen your spec will pick the ticket up.
+Every ticket is a **tracer bullet**: a narrow but complete path through every layer it touches (config, data, model, training or evaluation loop, logging, tests), runnable on its own as a short run on a tiny fixture. The obvious alternative, one layer per ticket with integration at the end, is what it refuses. Each ticket is also sized to fit one fresh context window, because a session that never saw your spec will pick it up.
 
 ## When to reach for it
 
-You invoke this by typing `/to-tickets`. The [agent](https://www.aihero.dev/ai-coding-dictionary/agent) won't reach for it on its own.
+You invoke this by typing `/to-tickets`, and the agent won't reach for it on its own.
 
 | Where you are | What to run |
 | --- | --- |
-| You have a spec issue and the build spans several sessions | `/to-tickets`, or `/to-tickets #<spec_issue>` |
-| The plan is only in the conversation, never written up | `/to-tickets` reads the thread directly, no spec needed |
-| The whole change fits in one context window | [implement](https://aihero.dev/skills-implement), skip the tickets |
-| Nothing is decided yet | [grill-with-docs](https://aihero.dev/skills-grill-with-docs), then [to-spec](https://aihero.dev/skills-to-spec) |
-| A [wayfinder](https://aihero.dev/skills-wayfinder) map has cleared | [to-spec](https://aihero.dev/skills-to-spec) first, to collapse the map, then `/to-tickets` |
-
-Tickets that `to-tickets` produced are agent-ready by construction. Don't run [triage](https://aihero.dev/skills-triage) over them. Triage is for work that arrived from someone else.
+| A spec, and the build spans several sessions | `/to-tickets plans/<slug>/spec.md`, or just `/to-tickets` in the same window |
+| The plan lives only in the conversation | `/to-tickets` reads the thread directly |
+| The whole change fits one context window | [implement](implement.md), skip the tickets |
+| Nothing decided yet | [grill-with-docs](grill-with-docs.md), then [to-spec](to-spec.md) |
 
 ## Prerequisites
 
-`to-tickets` publishes into a tracker, so [setup-matt-pocock-skills](https://aihero.dev/skills-setup-matt-pocock-skills) must have configured one for this repo, along with the triage-label vocabulary. Either kind works: a real tracker like GitHub or Linear, or local markdown files under `.scratch/`, which work with no extra setup.
+It writes into the repo you are working on, next to the spec in `plans/<slug>/`, or under a new slug when there is no spec.
 
 ## Tracer bullets, not layers
 
-A **horizontal** slice ships one layer of the change. Nothing works until every layer has landed, and each ticket's acceptance criteria have to reach into work that another ticket owns. A **vertical** slice (the tracer bullet) ships one thin path through all the layers at once, so it is verifiable alone and owns everything it grades.
+A horizontal slice (all the data loading, then all the model, then the training loop) makes nothing runnable until every slice has landed, and each ticket's acceptance criteria reach into work another ticket owns. A vertical slice owns everything it grades. The typical first tracer bullet for a new experiment: load a handful of examples, push them through a minimal model, compute the loss, take one optimiser step, log one metric. Later tickets widen each layer.
 
-This is the rule people break most often. One team ran a 26-ticket stack sliced by layer (corpus, producer, aggregator, selector) and got roughly twenty agent runs per closed ticket, about three quarters of them rework. Their own post-mortem traced every failure class back to the horizontal slicing rather than to the implementations.
+Before writing anything it orders prefactoring first ("make the change easy, then make the easy change"), then shows the breakdown as a numbered list and quizzes you on granularity and blocking edges. Nothing is written until you approve; that quiz is where to push back.
 
-Two things happen before anything is published. `to-tickets` looks for prefactoring (the principle "make the change easy, then make the easy change") and orders that work first. Then it presents the breakdown as a numbered list and quizzes you on it: is the granularity right, are the blocking edges real, should anything merge or split. Nothing reaches the tracker until you approve, and that quiz is the place to push back.
+A ticket delivers code verified on small inputs. Launching a full training run or a sweep is your call, never a ticket's acceptance criterion.
 
-## Blocking edges
+## Blocking edges and the frontier
 
-The edges are the point of the artifact. They work in two ways, depending on the tracker:
+Files are numbered `01`, `02`, ... in dependency order, blockers first, each with a `Blocked by:` line and a `Status:` that moves `todo` → `in-progress` → `done`. The **frontier** is every ticket whose blockers are all `done`; for a linear chain that is simply top to bottom.
 
-| Tracker | Where the edges live | How you work them |
-| --- | --- | --- |
-| Local markdown | Text in one file per ticket under `.scratch/<feature>/issues/<NN>-<slug>.md`, numbered blockers-first | Top to bottom, by hand |
-| A real tracker (GitHub, Linear) | Native blocking links, or sub-issues where the tracker has them | Any ticket whose blockers are done is on the **frontier** and can be grabbed |
-
-The edges live in the ticket either way. The tracker only decides whether anything can act on them in parallel. `to-tickets` produces the artifact; running it (one session at a time, or a fleet) is your job, not the skill's.
-
-## The wide-refactor exception
-
-One shape breaks the tracer-bullet rule. A **wide refactor** is a single mechanical change (rename a column, retype a shared symbol) whose **blast radius** covers the whole codebase. One edit breaks thousands of call sites, so no vertical slice can land green.
-
-`to-tickets` sequences that as **expand–contract** instead:
-
-- **Expand**: add the new form beside the old, so nothing breaks.
-- **Migrate**: move call sites over in batches sized by blast radius (per package, per directory), one ticket per batch, each blocked by the expand. CI stays green because the old form still exists.
-- **Contract**: delete the old form once no caller remains, in a ticket blocked by every migrate batch.
-
-Where even the batches can't stay green alone, they share an integration branch and all block a final integrate-and-verify ticket. CI only has to be green at that ticket.
+**Wide refactors** are the exception to vertical slicing: one mechanical change (rename a config key, change a tensor layout used everywhere) whose blast radius no single slice can land green. Those are sequenced as **expand-contract**: add the new form beside the old, migrate call sites in batches (one ticket each, blocked by the expand), then delete the old form in a ticket blocked by every batch.
 
 ## Common questions
 
-**It produced twelve tickets for a three-line change.**
-Over-decomposition is the most reported problem with this skill, and many users see it. The [model](https://www.aihero.dev/ai-coding-dictionary/model) defaults to atomic units and loses the grouping that would make them meaningful. The quiz step is where you fix this. Ask it to merge tickets, and it will. There is also a lower limit. If the whole change fits in one context window, you don't need this skill at all. Go straight to [implement](https://aihero.dev/skills-implement).
+**It produced twelve tickets for a small change.**
 
-**The tickets came out one per layer: all the schema in one, all the API in another.**
-This is the failure the vertical-slice rule is written against, and the skill still produces it sometimes. Catch it at the quiz step by asking one question per ticket: what can I demo when this is done? A ticket with no answer is a horizontal slice. Some people add a "demo path" line to each ticket for this reason, and report that it pushes the model toward vertical slices.
+Over-decomposition is common. Ask it to merge at the quiz step. If the whole change fits one context window, you don't need this skill: go to [implement](implement.md).
 
-**On GitHub the tickets weren't created as sub-issues of the spec issue.**
-This was reported across a dozen runs and several models, [most fully in issue #554](https://github.com/mattpocock/skills/issues/554). Fixed: `to-tickets` now makes each ticket a sub-issue of its source issue, and the GitHub tracker template gives the command (`gh issue create --parent <n>`, `gh` 2.94+). Re-run [setup-matt-pocock-skills](https://aihero.dev/skills-setup-matt-pocock-skills) to refresh an older `docs/agents/issue-tracker.md`.
+**The tickets came out one per layer.**
 
-**"Blocked by" was written into the issue body instead of a real blocking link.**
-This is the same kind of problem, [reported in issue #513](https://github.com/mattpocock/skills/issues/513), where the agent even stated that GitHub has no native blocking relationship at all. It does: `gh issue create --blocked-by 12,15`. Because the skill publishes blockers first, their numbers are always available at creation time. The body text is meant to be the fallback for trackers with no native edge, not the default. The ticket template now omits `## Blocked by` when the edges are native.
+Catch it at the quiz by asking, per ticket, what you can run when it is done. A ticket with no runnable answer is a horizontal slice.
 
-**Where do the local tickets go? The v1.1 notes said a root-level `tickets.md`.**
-They did, and that was a bug. A single shared file also caused race conditions when parallel agents wrote to it. Local mode now writes one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, in dependency order, matching the layout the local tracker template already described. The `NN` prefix is a real ticket ID, so `/implement 03` works instead of retyping a long title.
+**Some acceptance criteria were already true before any work.**
 
-**It kept truncating when it tried to read my spec.**
-A very large spec can outgrow what a tracker issue serves back cleanly. There is no local copy to fall back on, so the agent spends [tool calls](https://www.aihero.dev/ai-coding-dictionary/tool-call) fetching chunks again and never reaches the end. Don't [clear](https://www.aihero.dev/ai-coding-dictionary/clearing) or [compact](https://www.aihero.dev/ai-coding-dictionary/compaction) between `/to-spec` and `/to-tickets`. Run them in the same context window and the agent never has to fetch the spec back.
-
-**The acceptance criteria graded nothing: some passed before any work was done.**
-The template asks for criteria and says nothing about whether they can fail, so this happens. Three shapes recur: a criterion already true at the base commit, a criterion that only work in another ticket can satisfy, and one that restates the request rather than deriving from the artifact. Vertical slicing prevents most of it, because a slice that delivers new behaviour fails at the base commit by construction. The check is still worth doing by hand. For each criterion, name the observation that would show it false, and confirm it fails at the commit the implementer starts from.
-
-**The tickets are published. How do I actually run them?**
-The skill stops at the artifact, and there is no auto-dispatch mode. Dispatch is manual: look at the board, count the tickets with no open blockers, and open that many agent sessions. Give each ticket a fresh context, and clear between them. [implement](https://aihero.dev/skills-implement) does not reliably close or check off the ticket when it finishes, on GitHub or in local markdown, so you update the ticket's state yourself.
+Vertical slicing prevents most of this, since a slice delivering new behaviour fails at the start by construction. Still check: for each criterion, name the observation that would show it false.
 
 ## It's working if
 
-- Every ticket has an answer to "what can I demo when this is done?", and the answer is behaviour, not a layer.
-- The list comes back to you numbered, with a "Blocked by" line on each, before anything is published.
-- The ticket at the top has no blockers and can be started immediately.
-- Nothing in a ticket body is a file path or a line number, except a snippet a prototype produced.
-- Each ticket reads like something a fresh session could finish without you in the room.
-- Prefactoring, where it found any, is at the front of the order rather than mixed into feature tickets.
+- The numbered breakdown comes back for approval, with a `Blocked by` on each, before any file is written.
+- Every ticket answers "what can I run when this is done?" with behaviour, not a layer.
+- `01` has no blockers and can start immediately, and prefactoring sits at the front.
+- No ticket body contains file paths or line numbers, except a snippet a prototype produced.
+- There is one file per ticket under `plans/<slug>/tickets/`, never one combined file.
 
 ## Where it fits
 
-`to-tickets` is a step in the main build chain:
-
-```txt
-grill-with-docs → to-spec → to-tickets → implement → code-review → retro
-```
-
-Upstream is [to-spec](https://aihero.dev/skills-to-spec), which hands it a settled spec to slice against. Keep both in one context window, with no clear between them. Downstream is [implement](https://aihero.dev/skills-implement), which builds one ticket per fresh session, driving [tdd](https://aihero.dev/skills-tdd) for the tests and closing with [code-review](https://aihero.dev/skills-code-review). [implement-spec](https://aihero.dev/skills-implement-spec) is the other way down. It reads the same blocking edges as a task graph and builds every ready ticket in parallel on one integration branch. When you're unsure which skill or flow fits, [ask-matt](https://aihero.dev/skills-ask-matt) routes you.
+`to-tickets` is a **chain step** in the main flow (`grill-with-docs → to-spec → to-tickets → implement → code-review`). Upstream, [to-spec](to-spec.md) hands it a settled spec; keep both in one context window. Downstream, [implement](implement.md) builds one ticket per fresh session, driving [tdd](tdd.md) and closing with [code-review](code-review.md). When unsure which flow fits, [ask](ask.md) routes you.

@@ -1,30 +1,29 @@
-# Matt Pocock Skills
+# Research Engineering Skills
 
-A collection of agent skills (slash commands and behaviors) loaded by Claude Code. Skills are organized into buckets and consumed by per-repo configuration emitted by `/setup-matt-pocock-skills`.
+A collection of agent skills (slash commands and behaviors) for writing machine learning research code. Skills are organized into buckets and work against plan files kept in the target repo.
 
 ## Language
 
-**Issue tracker**:
-The tool that hosts a repo's issues: GitHub Issues, Linear, a local `.scratch/` markdown convention, or similar. Skills like `to-tickets`, `to-spec`, and `triage` read from and write to it.
-_Avoid_: backlog manager, backlog backend, issue host
+**Plan**:
+A directory `plans/<slug>/` in the target repo holding one piece of work: its **Spec**, its **Tickets**, and any research notes.
+_Avoid_: issue tracker, backlog
 
-**Issue**:
-A single tracked unit of work inside an **Issue tracker**: a bug, task, spec, or slice produced by `to-tickets`.
-_Avoid_: ticket (use only when quoting external systems that call them tickets, or for a **Decision ticket**, see below)
+**Spec**:
+The `spec.md` inside a **Plan**: research question, hypothesis, experiments, and the implementation and testing decisions for the code.
+_Avoid_: PRD, design doc
 
-**Decision ticket**:
-A `wayfinder` unit: a child **Issue** of a `wayfinder:map` holding a *question* whose resolution is a decision, not a slice of a build to execute. The **decision** qualifier is what keeps it distinct from an implementation ticket; `wayfinder` introduces the term, then uses "ticket".
+**Ticket**:
+One markdown file under a **Plan**'s `tickets/` directory describing a tracer-bullet slice of work, with a `Status:` line and its blocking edges.
+_Avoid_: issue, task card
 
-**Triage role**:
-A canonical state-machine label applied to an **Issue** during triage (e.g. `needs-triage`, `ready-for-afk`). Each role maps to a real label string in the **Issue tracker** via `docs/agents/triage-labels.md`.
+**Seam**:
+The public interface a test observes behavior at, agreed with the user before any test is written.
 
 ## Relationships
 
-- An **Issue tracker** holds many **Issues**
-- An **Issue** carries one **Triage role** at a time
-- A **Decision ticket** is an **Issue** (a child of a `wayfinder:map`)
+- A **Plan** holds one **Spec** and many **Tickets**
+- A **Ticket** may be blocked by other **Tickets** in the same **Plan**
 
 ## Flagged ambiguities
 
-- "backlog" was previously used to mean both the *tool* hosting issues and the *body of work* inside it. Resolved: the tool is the **Issue tracker**; "backlog" is no longer used as a domain term.
-- "backlog backend" / "backlog manager". Resolved: collapsed into **Issue tracker**.
+- "issue" was previously used for both a ticket and a remote tracker entry. Resolved: there is no remote tracker; the unit of work is a **Ticket** file.

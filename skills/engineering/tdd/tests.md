@@ -4,74 +4,78 @@
 
 **Integration-style**: Test through real interfaces, not mocks of internal parts.
 
-```typescript
-// GOOD: Tests observable behavior
-test("user can checkout with valid cart", async () => {
-  const cart = createCart();
-  cart.add(product);
-  const result = await checkout(cart, paymentMethod);
-  expect(result.status).toBe("confirmed");
-});
+```python
+# GOOD: Tests observable behavior
+def test_loader_never_yields_test_split_examples():
+    loader = make_loader(tiny_dataset, split="train", batch_size=4)
+    seen = {i for batch in loader for i in batch["example_id"].tolist()}
+    assert seen.isdisjoint(tiny_dataset.split_ids("test"))
 ```
 
 Characteristics:
 
-- Tests behavior users/callers care about
+- Tests behavior callers care about
 - Uses public API only
 - Survives internal refactors
 - Describes WHAT, not HOW
 - One logical assertion per test
 
+```python
+# GOOD: Known answer, worked by hand from the definition
+def test_masked_mean_ignores_padding():
+    values = torch.tensor([[1.0, 3.0, 99.0]])
+    mask = torch.tensor([[True, True, False]])
+    assert masked_mean(values, mask).item() == pytest.approx(2.0)
+
+# GOOD: End-to-end wiring check on a tiny batch
+def test_model_can_overfit_one_batch():
+    torch.manual_seed(0)
+    model, batch = make_model(tiny_config), tiny_batch()
+    losses = train_steps(model, batch, steps=50)
+    assert losses[-1] < 0.05 * losses[0]
+```
+
 ## Bad Tests
 
 **Implementation-detail tests**: Coupled to internal structure.
 
-```typescript
-// BAD: Tests implementation details
-test("checkout calls paymentService.process", async () => {
-  const mockPayment = jest.mock(paymentService);
-  await checkout(cart, payment);
-  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
-});
+```python
+# BAD: Tests implementation details
+def test_forward_calls_attention(mocker):
+    spy = mocker.spy(model.encoder.layers[0], "attention")
+    model(batch)
+    assert spy.call_count == 1
 ```
 
 Red flags:
 
-- Mocking internal collaborators
-- Testing private methods
+- Mocking internal collaborators (your own layers, your own data transforms)
+- Testing private helpers
 - Asserting on call counts/order
 - Test breaks when refactoring without behavior change
 - Test name describes HOW not WHAT
-- Verifying through external means instead of interface
+- Asserting exact float equality instead of a tolerance
 
-```typescript
-// BAD: Bypasses interface to verify
-test("createUser saves to database", async () => {
-  await createUser({ name: "Alice" });
-  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
-  expect(row).toBeDefined();
-});
+**Results-as-tests**: asserting a research outcome on real training.
 
-// GOOD: Verifies through interface
-test("createUser makes user retrievable", async () => {
-  const user = await createUser({ name: "Alice" });
-  const retrieved = await getUser(user.id);
-  expect(retrieved.name).toBe("Alice");
-});
+```python
+# BAD: Slow, flaky, and tests the method rather than the code
+def test_model_reaches_good_accuracy():
+    model = train(full_config)
+    assert evaluate(model, "test")["accuracy"] > 0.9
 ```
+
+That belongs in an experiment and its write-up, not the test suite.
 
 **Tautological tests**: Expected value restates the implementation, so the test passes by construction.
 
-```typescript
-// BAD: Expected value is recomputed the way the code computes it
-test("calculateTotal sums line items", () => {
-  const items = [{ price: 10 }, { price: 5 }];
-  const expected = items.reduce((sum, i) => sum + i.price, 0);
-  expect(calculateTotal(items)).toBe(expected);
-});
+```python
+# BAD: Expected value is recomputed the way the code computes it
+def test_mse():
+    x, y = torch.randn(8), torch.randn(8)
+    assert mse(x, y) == ((x - y) ** 2).mean()
 
-// GOOD: Expected value is an independent, known literal
-test("calculateTotal sums line items", () => {
-  expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
-});
+# GOOD: Expected value is an independent, known literal
+def test_mse():
+    assert mse(torch.tensor([1.0, 2.0]), torch.tensor([1.0, 4.0])).item() == pytest.approx(2.0)
 ```

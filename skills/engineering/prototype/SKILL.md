@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
+description: Build a throwaway prototype (a script or notebook) to answer one research or design question fast. Use when the user wants to check whether an idea learns at all on a toy problem, look at what some data or a model's behaviour actually looks like, or sanity-check a module's logic or interface before building it properly.
 ---
 
 # Prototype
@@ -11,16 +11,24 @@ A prototype is **throwaway code that answers a question**. The question decides 
 
 Identify which question is being answered, using the user's prompt, the surrounding code, or by asking if the user is around:
 
-- **"Does this logic / state model feel right?"** → [LOGIC.md](LOGIC.md). Build a single shareable HTML file (free-play buttons plus tabbed guided walkthroughs) that pushes the state machine through cases that are hard to reason about on paper, and that a non-developer can drive.
-- **"What should this look like?"** → [UI.md](UI.md). Generate several radically different UI variations on a single route, switchable via a URL search param and a floating bottom bar.
+- **"Does this idea work at all?"** → a **toy experiment**. The smallest problem that can show the effect: synthetic data, a tiny subset, a two-layer model, minutes on a laptop. It prints or plots the one signal that answers the question (does the loss fall, does the new term change the behaviour, does the baseline beat it). If the effect only shows at scale, say so and stop: that is an experiment for the real code, not a prototype.
+- **"What does this look like?"** → an **exploratory notebook or script** over real data or a real checkpoint: distributions, examples, attention maps, failure cases, embeddings. It produces plots and summaries a human looks at.
+- **"Does this logic or interface feel right?"** → a **pure module plus a driver**. Put the logic (a loss, a sampler, a masking scheme, a config shape) in a small pure module that could be lifted into the real codebase, and drive it from a script that pushes it through the awkward cases (empty batch, all padding, one class) and prints the result of each.
 
-The two branches produce very different artifacts, so getting this wrong wastes the whole prototype. If the question is genuinely ambiguous and the user isn't reachable, default to whichever branch better matches the surrounding code (a backend module → logic; a page or component → UI) and state the assumption at the top of the prototype.
+State the question in one line at the top of the prototype before writing any code. A prototype that answers the wrong question is pure waste.
 
-## Rules that apply to both
+## Rules for every branch
 
-1. **Throwaway from day one, and clearly marked as such.** Locate the prototype code close to where it will actually be used (next to the module or page it's prototyping for) so context is obvious, but name it so a casual reader can see it's a prototype, not production. For throwaway UI routes, obey whatever routing convention the project already uses; don't invent a new top-level structure.
-2. **Trivial to run.** A UI prototype starts from one command in the project's task runner: `pnpm <name>`, `python <path>`, `bun <path>`, etc. A logic demo is a single HTML file the user double-clicks. Either way, no thinking required to start it.
-3. **No persistence by default.** State lives in memory. Persistence is the thing the prototype is _checking_, not something it should depend on. If the question explicitly involves a database, hit a scratch DB or a local file with a clear "PROTOTYPE, wipe me" name.
-4. **Skip the polish.** No tests, no error handling beyond what makes the prototype _runnable_, no abstractions. The point is to learn something fast.
-5. **Surface the state.** After every action (logic) or on every variant switch (UI), print or render the full relevant state so the user can see what changed.
-6. **Capture it when done.** Fold any validated decision into the real code, then capture the prototype itself as a **primary source**: commit it to a throwaway branch, out of main, and leave a context pointer to that branch on the implementation issue. Capture the answer too (the verdict and the question it settled) in the issue or a commit. The main branch keeps only the validated decision.
+1. **Throwaway from day one, and clearly marked as such.** Put it under `prototypes/<name>/` (or follow the repo's existing convention), so nobody mistakes it for library code. It may import from the real codebase; the real codebase never imports from it.
+2. **Trivial to run.** One command (`python prototypes/<name>/run.py`, or one notebook run top to bottom). No setup the user has to think about.
+3. **Small and seeded.** Seed every source of randomness, and keep it fast enough to rerun on every change. If it needs a GPU or the full dataset, the question is probably too big for a prototype.
+4. **Skip the polish.** No tests, no config system, no error handling beyond what makes it runnable, no abstractions. The point is to learn something fast.
+5. **Surface the signal.** Print or plot the thing that answers the question after every run, so the user can see the answer without reading the code.
+6. **Capture it when done.** Write the verdict (the question, the answer, and the run that showed it) into the plan it feeds (`plans/<slug>/spec.md` under Further Notes, or the relevant ticket's Notes). Fold any validated logic into the real code properly, with tests. Then keep the prototype itself as a **primary source** by committing it to a `prototype/<name>` branch out of main, and point to that branch from the verdict. Main keeps only the validated decision.
+
+## Anti-patterns
+
+- **Don't add tests.** A prototype that needs tests is no longer a prototype.
+- **Don't generalise.** No "what if we wanted to support X later." The prototype answers one question.
+- **Don't treat a prototype result as a research result.** One seed on a toy problem is evidence that an idea is worth building, not evidence that it works.
+- **Don't promote the prototype directly into the codebase.** It was written under prototype constraints. Rewrite it properly when you fold it in.

@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow.
+description: Diagnosis loop for hard bugs, silent training failures, and performance regressions in research code. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow, NaN losses, a model that will not learn, results that do not reproduce, or out-of-memory errors.
 ---
 
 # Diagnosing Bugs
@@ -23,16 +23,14 @@ Spend disproportionate effort here. **Be aggressive. Be creative. Refuse to give
 
 ### Ways to construct one, in roughly this order
 
-1. **Failing test** at whatever seam reaches the bug: unit, integration, e2e.
-2. **Curl / HTTP script** against a running dev server.
-3. **CLI invocation** with a fixture input, diffing stdout against a known-good snapshot.
-4. **Headless browser script** (Playwright / Puppeteer) that drives the UI and asserts on DOM/console/network.
-5. **Replay a captured trace.** Save a real network request / payload / event log to disk; replay it through the code path in isolation.
-6. **Throwaway harness.** Spin up a minimal subset of the system (one service, mocked deps) that exercises the bug code path with a single function call.
-7. **Property / fuzz loop.** If the bug is "sometimes wrong output", run 1000 random inputs and look for the failure mode.
-8. **Bisection harness.** If the bug appeared between two known states (commit, dataset, version), automate "boot at state X, check, repeat" so you can `git bisect run` it.
-9. **Differential loop.** Run the same input through old-version vs new-version (or two configs) and diff outputs.
-10. **HITL bash script.** Last resort. If a human must click, drive _them_ with `scripts/hitl-loop.template.sh` so the loop is still structured. Captured output feeds back to you.
+1. **Failing test** at whatever seam reaches the bug: a data contract, a loss on a known input, a forward pass, a one-step training run.
+2. **Tiny training run**: a script that trains for a few dozen steps on a handful of examples (CPU if possible) and asserts on the symptom: loss is finite, loss falls, gradients are non-zero.
+3. **Fixture replay**: save the exact batch, checkpoint, or config that triggered the failure to disk and replay it through the code path in isolation. For a NaN mid-run, save the batch and model state at the step before it appeared.
+4. **CLI invocation** of the training or evaluation entry point with a fixture config, diffing outputs against a known-good snapshot.
+5. **Differential loop**: run the same input through two versions, two configs, or your code and a reference implementation, and diff outputs layer by layer.
+6. **Bisection harness**: if the bug appeared between two known states (commit, dataset version, library version), automate "check out state X, run the tiny loop, check" so you can `git bisect run` it.
+7. **Property loop**: if the bug is "sometimes wrong output", run many random seeds or inputs and look for the failure mode.
+8. **HITL bash script**: last resort, for a step only a human can take (logging into a cluster, reading a remote dashboard). Drive _them_ with `scripts/hitl-loop.template.sh` so the loop is still structured. Captured output feeds back to you.
 
 Build the right feedback loop, and the bug is 90% fixed.
 
@@ -40,28 +38,28 @@ Build the right feedback loop, and the bug is 90% fixed.
 
 Treat the loop as a product. Once you have _a_ loop, **tighten** it:
 
-- Can I make it faster? (Cache setup, skip unrelated init, narrow the test scope.)
+- Can I make it faster? (Shrink the model and data, cache preprocessing, run on CPU, narrow the test scope.)
 - Can I make the signal sharper? (Assert on the specific symptom, not "didn't crash".)
-- Can I make it more deterministic? (Pin time, seed RNG, isolate filesystem, freeze network.)
+- Can I make it more deterministic? (Seed every RNG, enable deterministic kernels, fix the data order, freeze network access.)
 
 A 30-second flaky loop is barely better than no loop; a 2-second deterministic one is tight, a debugging superpower.
 
 ### Non-deterministic bugs
 
-The goal is not a clean repro but a **higher reproduction rate**. Loop the trigger 100×, parallelise, add stress, narrow timing windows, inject sleeps. A 50%-flake bug is debuggable; 1% is not, so keep raising the rate until it's debuggable.
+The goal is not a clean repro but a **higher reproduction rate**. Loop the trigger 100×, sweep seeds, parallelise, narrow timing windows (multi-worker data loading and distributed training are the usual sources). A 50%-flake bug is debuggable; 1% is not, so keep raising the rate until it's debuggable.
 
 ### When you genuinely cannot build a loop
 
-Stop and say so explicitly. List what you tried. Ask the user for: (a) access to whatever environment reproduces it, (b) a redacted captured artifact (HAR file, log dump, core dump, screen recording with timestamps), or (c) permission to add temporary production instrumentation. Do **not** proceed to hypothesise without a loop.
+Stop and say so explicitly. List what you tried. Ask the user for: (a) access to whatever environment reproduces it (a GPU, the cluster, the full dataset), (b) a captured artifact (training logs, the offending batch, a checkpoint, the resolved config), or (c) permission to add temporary instrumentation to a real run. Do **not** proceed to hypothesise without a loop.
 
 ### Completion criterion: a tight loop that goes red
 
-Phase 1 is done when the loop is **tight** and **red-capable**: you can name **one command** (a script path, a test invocation, a curl) that you have **already run at least once** (show the invocation and its output, redacted), and that is:
+Phase 1 is done when the loop is **tight** and **red-capable**: you can name **one command** (a script path, a test invocation, a tiny training run) that you have **already run at least once** (show the invocation and its output, redacted), and that is:
 
 - [ ] **Red-capable**: it drives the actual bug code path and asserts the **user's exact symptom**, so it can go red on this bug and green once fixed. Not "runs without erroring"; it must be able to _catch this specific bug_.
 - [ ] **Deterministic**: same verdict every run (flaky bugs: a pinned, high reproduction rate, per above).
 - [ ] **Fast**: seconds, not minutes.
-- [ ] **Agent-runnable**: you can run it unattended; a human in the loop only via `scripts/hitl-loop.template.sh`.
+- [ ] **Agent-runnable**: you can run it unattended on the hardware you have; a human in the loop only via `scripts/hitl-loop.template.sh`.
 
 If you catch yourself reading code to build a theory before this command exists, **stop: jumping straight to a hypothesis is the exact failure this skill prevents.** No red-capable command, no Phase 2.
 
@@ -73,7 +71,7 @@ Confirm:
 
 - [ ] The loop produces the failure mode the **user** described, not a different failure that happens to be nearby. Wrong bug = wrong fix.
 - [ ] The failure is reproducible across multiple runs (or, for non-deterministic bugs, reproducible at a high enough rate to debug against).
-- [ ] You have captured the exact symptom (error message, wrong output, slow timing) so later phases can verify the fix actually addresses it.
+- [ ] You have captured the exact symptom (error message, wrong output, NaN step, slow timing) so later phases can verify the fix actually addresses it.
 
 ### Minimise
 
@@ -95,7 +93,7 @@ Each hypothesis must be **falsifiable**: state the prediction it makes.
 
 If you cannot state the prediction, the hypothesis is a vibe: discard or sharpen it.
 
-**Show the ranked list to the user before testing.** They often have domain knowledge that re-ranks instantly ("we just deployed a change to #3"), or know hypotheses they've already ruled out. Cheap checkpoint, big time saver. Don't block on it; proceed with your ranking if the user is AFK.
+**Show the ranked list to the user before testing.** They often have domain knowledge that re-ranks instantly ("we just upgraded the library #3 depends on"), or know hypotheses they've already ruled out. Cheap checkpoint, big time saver. Don't block on it; proceed with your ranking if the user is AFK.
 
 ## Phase 4: Instrument
 
@@ -109,7 +107,18 @@ Tool preference:
 
 **Tag every debug log** with a unique prefix, e.g. `[DEBUG-a4f2]`. Cleanup at the end becomes a single grep. Untagged logs survive; tagged logs die.
 
-**Perf branch.** For performance regressions, logs are usually wrong. Instead: establish a baseline measurement (timing harness, `performance.now()`, profiler, query plan), then bisect. Measure first, fix second.
+**Perf branch.** For throughput and memory regressions, logs are usually wrong. Instead: establish a baseline measurement (steps per second, peak memory, a profiler trace), then bisect. Measure first, fix second. Look first at the data loader (is the GPU waiting?), host-device syncs in the loop (`.item()`, `.cpu()`, printing tensors), and activations kept alive by a stored graph.
+
+## Silent failures
+
+Many research bugs throw nothing: the run finishes and the number is wrong. When the symptom is "it trains but badly", "it does not reproduce", or "the result is too good", these checks make good probes in Phase 4:
+
+- **Overfit one batch.** If the model cannot drive the loss near zero on a handful of examples, the bug is in wiring (model, loss, optimiser, labels), not capacity or data scale.
+- **Check the data you actually feed.** Decode and inspect a real batch after every transform: labels aligned with inputs, augmentations sane, normalisation applied once.
+- **Check the loss at initialisation.** It should match its expected value for chance predictions (for example `log(num_classes)` for cross-entropy). A mismatch points at the loss or the output layer.
+- **Check gradients.** Every trainable parameter gets a finite, non-zero gradient; frozen ones get none. For NaNs, enable anomaly detection or check for non-finite values layer by layer to find the first one.
+- **Check for leakage.** A result that is too good often means test examples, or statistics computed on them, reached training.
+- **Check modes and seeds.** Evaluation in train mode, or randomness outside the seeded sources, explains many "same config, different result" reports.
 
 ## Phase 5: Fix + regression test
 
@@ -135,4 +144,5 @@ Required before declaring done:
 - [ ] Regression test passes (or absence of seam is documented)
 - [ ] All `[DEBUG-...]` instrumentation removed (`grep` the prefix)
 - [ ] Throwaway prototypes deleted (or moved to a clearly-marked debug location)
-- [ ] The hypothesis that turned out correct is stated in the commit / PR message, so the next debugger learns
+- [ ] The hypothesis that turned out correct is stated in the commit message, so the next debugger learns
+- [ ] Any result produced by the buggy code is flagged to the user, since it may need re-running

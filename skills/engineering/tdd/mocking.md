@@ -2,58 +2,55 @@
 
 Mock at **system boundaries** only:
 
-- External APIs (payment, email, etc.)
-- Databases (sometimes - prefer test DB)
-- Time/randomness
-- File system (sometimes)
+- Experiment trackers and remote logging (W&B, MLflow, TensorBoard writers)
+- Remote storage, dataset downloads, and model hubs
+- Cluster schedulers and anything that launches jobs
+- Time and randomness (prefer seeding over mocking)
+- File system (sometimes: prefer a temporary directory)
 
 Don't mock:
 
-- Your own classes/modules
-- Internal collaborators
+- Your own models, layers, losses, or data transforms
+- Tensor libraries (PyTorch, JAX, NumPy): use tiny real tensors instead
 - Anything you control
+
+Prefer a **tiny real thing** over a mock: a ten-example in-memory dataset, a two-layer model with a hidden size of 8, a config with one epoch of two steps. These run in milliseconds and exercise the real code.
 
 ## Designing for Mockability
 
-At system boundaries, design interfaces that are easy to mock:
+At system boundaries, design interfaces that are easy to replace:
 
 **1. Use dependency injection**
 
 Pass external dependencies in rather than creating them internally:
 
-```typescript
-// Easy to mock
-function processPayment(order, paymentClient) {
-  return paymentClient.charge(order.total);
-}
+```python
+# Easy to replace in a test
+def train(model, loader, logger):
+    for step, batch in enumerate(loader):
+        logger.log({"loss": step_fn(model, batch)}, step=step)
 
-// Hard to mock
-function processPayment(order) {
-  const client = new StripeClient(process.env.STRIPE_KEY);
-  return client.charge(order.total);
-}
+# Hard to replace
+def train(model, loader):
+    logger = wandb.init(project="my-project")
+    ...
 ```
 
-**2. Prefer SDK-style interfaces over generic fetchers**
+**2. Prefer narrow interfaces over generic ones**
 
-Create specific functions for each external operation instead of one generic function with conditional logic:
+Give the boundary the few operations the code actually uses, so a test fake is a few lines:
 
-```typescript
-// GOOD: Each function is independently mockable
-const api = {
-  getUser: (id) => fetch(`/users/${id}`),
-  getOrders: (userId) => fetch(`/users/${userId}/orders`),
-  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
-};
+```python
+# GOOD: A small logger interface a test can satisfy with a list
+class MetricLogger(Protocol):
+    def log(self, metrics: dict[str, float], step: int) -> None: ...
 
-// BAD: Mocking requires conditional logic inside the mock
-const api = {
-  fetch: (endpoint, options) => fetch(endpoint, options),
-};
+# BAD: The whole tracker client passed everywhere, so a fake must imitate all of it
+def train(model, loader, wandb_run): ...
 ```
 
-The SDK approach means:
-- Each mock returns one specific shape
+The narrow approach means:
+
+- Each fake records exactly what the test checks
 - No conditional logic in test setup
-- Easier to see which endpoints a test exercises
-- Type safety per endpoint
+- Easy to see which boundary a test exercises
